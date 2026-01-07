@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
+	"weather-api/database"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type VisualCrossingResponse struct {
@@ -40,6 +44,22 @@ func GetWelcome(w http.ResponseWriter, r *http.Request) {
 func GetCityWeather(w http.ResponseWriter, r *http.Request) {
 
 	cityParam := r.PathValue("city")
+
+	RedisKey := "weather" + cityParam
+	val, err := database.Rdb.Get(database.Ctx, RedisKey).Result()
+
+	if err == nil {
+		fmt.Println("cahce hit : getting data from redis for citydata : " + cityParam)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Cache-Source", "Redis")
+		w.Write([]byte(val))
+		return
+	} else if err != redis.Nil {
+		// Kalau  BUKAN karena kosong (misal Redis mati), laporin aja tapi lanjut
+		fmt.Println("Error Redis:", err)
+	}
+
+	fmt.Println("Cache MISS: shooting to API : for city data " + cityParam)
 
 	apiKey := os.Getenv("WEATHER_API_KEY")
 	url := fmt.Sprintf("https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/%s?unitGroup=metric&key=%s&contentType=json", cityParam, apiKey)
@@ -77,7 +97,16 @@ func GetCityWeather(w http.ResponseWriter, r *http.Request) {
 		Sunset:    today.Sunset,
 	}
 
+	jsonData, err := json.Marshal(finalData)
+	if err == nil {
+		err := database.Rdb.Set(database.Ctx, RedisKey, jsonData, 12*time.Hour).Err()
+		if err != nil {
+			fmt.Println("failed to save to redis")
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(finalData)
+	w.Header().Set("X-Cache-Source", "VisualCrossingAPI")
+	w.Write(jsonData)
 
 }
