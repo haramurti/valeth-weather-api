@@ -6,8 +6,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var Rdb *redis.Client
-var Ctx = context.Background()
+var Rdb *redis.Client          //remote tv universal
+var Ctx = context.Background() // giving context
 
 func ConnectRedis() {
 	Rdb = redis.NewClient(&redis.Options{
